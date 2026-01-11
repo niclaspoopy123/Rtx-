@@ -409,7 +409,7 @@ local function processWorldMap()
             if (s > 0.4 and v > 0.5) or part.Material == Enum.Material.Neon then
                 part.Material = Enum.Material.Neon
                 -- Enhanced neon colors with more vibrancy
-                part.Color = Color3.fromHSV(h, 1, 10) -- Max saturation and higher brightness
+                part.Color = Color3.fromHSV(h, 1, 1) -- Max saturation and brightness
                 local light = Instance.new("PointLight")
                 light.Color = part.Color
                 light.Range = 25 -- Increased range for more shine
@@ -478,7 +478,7 @@ local function setupAudio()
     local city    = createLoop("CityAmbience", CONFIG.Audio.CityHumID, CONFIG.Audio.MasterVolume * 0.7)
 
     task.spawn(function()
-        local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine)
+        local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
         while true do
             local cam = Workspace.CurrentCamera
             local isIndoors = false
