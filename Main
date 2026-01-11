@@ -284,7 +284,7 @@ local function createRainOverlay()
             local character = player.Character
             if character and character:FindFirstChild("Humanoid") then
                 local humanoid = character.Humanoid
-                if humanoid.MoveSpeed > 0 and (humanoid.MoveVector.Magnitude > 0.1) then
+                if humanoid.MoveVector.Magnitude > 0.1 then
                     targetTrans = 1 -- Fully transparent when walking
                 end
             end
@@ -346,8 +346,10 @@ local function startRaycastRain()
             rayParams.FilterType = Enum.RaycastFilterType.Exclude
             rayParams.FilterDescendantsInstances = {cam, Players.LocalPlayer.Character}
 
-            local direction = Vector3.new(0, -1, 0) + CONFIG.RaycastRain.WindDrift * 0.01
-            local rayResult = Workspace:Raycast(spawnPos, direction.Unit * 300, rayParams)
+            local baseDirection = Vector3.new(0, -1, 0)
+            local windOffset = CONFIG.RaycastRain.WindDrift * 0.01
+            local direction = (baseDirection + windOffset).Unit
+            local rayResult = Workspace:Raycast(spawnPos, direction * 300, rayParams)
 
             if rayResult then
                 local hitPos = rayResult.Position
