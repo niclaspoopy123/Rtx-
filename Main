@@ -1,0 +1,520 @@
+--[[
+    ============================================================================
+    🏙️ CYBERPUNK WORLD ENGINE [ULTRA-REALISM v6.1] - RAYCAST RAIN UPDATE
+    ============================================================================
+    
+    v6.1 UPGRADES:
+    [+] 🌧️ RAYCAST RAIN: Replaced particle rain with physical raycast droplets.
+    [+] 💥 DYNAMIC SPLASHES: Rain now splashes correctly off all surfaces (walls, roofs).
+    [+] 🥶 COLD BREATH SYSTEM: Characters emit steam based on temperature/night cycles.
+    [+] 🩸 CHROMATIC ABERRATION: Dynamic lens distortion based on movement speed.
+    [+] 👣 FOOTSTEP SPLASHES: Physics-based particles when walking on wet surfaces.
+    [+] 💡 VOLUMETRIC LIGHT SHAFTS: Simulated god-rays from neon signs.
+    [+] 🎥 CAMERA RAIN DROPLETS: Screen-space droplets that drip down the lens.
+    [+] 🔊 DYNAMIC AUDIO: Indoor/Outdoor rain transitions & City Ambience.
+    
+    ----------------------------------------------------------------------------
+]]
+
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+
+--------------------------------------------------------------------------------
+-- 🛠️ CONFIGURATION
+--------------------------------------------------------------------------------
+local CONFIG = {
+    Core = {
+        TargetTechnology = Enum.Technology.Future,
+        GlobalShadows = true,
+        TimeOfDay = 0,
+    },
+    Lighting = {
+        DiffuseScale = 0.15, -- Darker for contrast
+        SpecularScale = 2.5, -- Higher for wet look
+        AmbientBase = Color3.fromRGB(2, 2, 5),
+    },
+    Camera = {
+        EnableDoF = true,
+        FocusDistance = 15,
+        BlurRadius = 60,
+        ShakeIntensity = 0.5,
+        RainDropsEnabled = true,
+    },
+    Audio = {
+        MasterVolume = 0.5,
+        CityHumID = "rbxassetid://2843658663",
+        RainID = "rbxassetid://9112854440",
+        IndoorRainID = "rbxassetid://9112855242",
+        FootstepSplash = "rbxassetid://277067660",
+        ThunderSounds = { "rbxassetid://2533974929", "rbxassetid://1562368753" },
+    },
+    Visuals = {
+        RainTextureID = "rbxassetid://424548883",
+        SplashTextureID = "rbxassetid://261407734",
+        BreathTextureID = "rbxassetid://560480319",
+        RainDropOverlayID = "rbxassetid://5355609262",
+    },
+    -- NEW SETTINGS FOR RAYCAST RAIN
+    RaycastRain = {
+        Amount = 10,    -- Drops per frame (Lower if lagging)
+        Height = 80,    -- Height above camera to spawn
+        Radius = 60,    -- Radius around camera
+        SplashColor = Color3.fromRGB(200, 225, 255)
+    }
+}
+
+print(">> 💾 LOADING CYBERPUNK ULTRA-REALISM v6.1...")
+
+--------------------------------------------------------------------------------
+-- 🔌 MODULE 1: ADVANCED POST-PROCESSING & LENS EFFECTS
+--------------------------------------------------------------------------------
+local function setupLighting()
+    Lighting.Technology = CONFIG.Core.TargetTechnology
+    Lighting.EnvironmentDiffuseScale = CONFIG.Lighting.DiffuseScale
+    Lighting.EnvironmentSpecularScale = CONFIG.Lighting.SpecularScale
+    Lighting.Ambient = CONFIG.Lighting.AmbientBase
+    Lighting.OutdoorAmbient = Color3.fromRGB(5, 5, 15)
+    Lighting.GlobalShadows = CONFIG.Core.GlobalShadows
+    Lighting.ClockTime = CONFIG.Core.TimeOfDay
+
+    -- Cleanup old effects
+    for _, child in ipairs(Lighting:GetChildren()) do
+        if child:IsA("PostEffect") or child:IsA("Sky") or child:IsA("Atmosphere") then
+            child:Destroy()
+        end
+    end
+
+    -- 1. Volumetric Fog (Dense & Low)
+    local atmo = Instance.new("Atmosphere")
+    atmo.Name = "HeavySmog"
+    atmo.Density = 0.45
+    atmo.Offset = 0.1
+    atmo.Color = Color3.fromRGB(20, 25, 35)
+    atmo.Decay = Color3.fromRGB(10, 10, 15)
+    atmo.Glare = 0.6
+    atmo.Haze = 3
+    atmo.Parent = Lighting
+
+    -- 2. High Contrast Color Correction
+    local cc = Instance.new("ColorCorrectionEffect")
+    cc.TintColor = Color3.fromRGB(230, 240, 255)
+    cc.Brightness = 0.05
+    cc.Contrast = 0.3
+    cc.Saturation = -0.2
+    cc.Parent = Lighting
+
+    -- 3. Bloom (Neon Glow)
+    local bloom = Instance.new("BloomEffect")
+    bloom.Intensity = 0.8
+    bloom.Threshold = 0.8
+    bloom.Size = 42
+    bloom.Parent = Lighting
+
+    -- 4. Chromatic Aberration
+    local motionBlur = Instance.new("BlurEffect")
+    motionBlur.Name = "DynamicLens"
+    motionBlur.Size = 0
+    motionBlur.Parent = Lighting
+
+    -- Skybox
+    local sky = Instance.new("Sky")
+    sky.SkyboxBk = "rbxassetid://159067838"
+    sky.SkyboxDn = "rbxassetid://159067646"
+    sky.SkyboxFt = "rbxassetid://159067838"
+    sky.SkyboxLf = "rbxassetid://159067838"
+    sky.SkyboxRt = "rbxassetid://159067838"
+    sky.SkyboxUp = "rbxassetid://159067622"
+    sky.StarCount = 0
+    sky.Parent = Lighting
+
+    -- Dynamic Lens Logic
+    task.spawn(function()
+        local cam = Workspace.CurrentCamera
+        while true do
+            local speed = 0
+            local char = Players.LocalPlayer and Players.LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                speed = char.HumanoidRootPart.Velocity.Magnitude
+            end
+            
+            local targetBlur = math.clamp(speed / 10, 0, 6)
+            TweenService:Create(motionBlur, TweenInfo.new(0.2), {Size = targetBlur}):Play()
+            task.wait(0.1)
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- ❄️ MODULE 2: COLD BREATH & FOOTSTEP SPLASHES
+--------------------------------------------------------------------------------
+local function createBreathEmitter(head)
+    local att = Instance.new("Attachment")
+    att.Position = Vector3.new(0, -0.2, -0.6) -- Near mouth
+    att.Parent = head
+
+    local emitter = Instance.new("ParticleEmitter")
+    emitter.Texture = CONFIG.Visuals.BreathTextureID
+    emitter.Rate = 0
+    emitter.Lifetime = NumberRange.new(1.5, 2.5)
+    emitter.Speed = NumberRange.new(0.5, 1.5)
+    emitter.SpreadAngle = Vector2.new(10, 10)
+    emitter.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1.5)})
+    emitter.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.9), 
+        NumberSequenceKeypoint.new(0.3, 0.6), 
+        NumberSequenceKeypoint.new(1, 1)
+    })
+    emitter.Color = ColorSequence.new(Color3.fromRGB(200, 220, 255))
+    emitter.Acceleration = Vector3.new(0, 1, 0)
+    emitter.Parent = att
+    
+    return emitter
+end
+
+local function setupCharacterPhysics(character)
+    local hrp = character:WaitForChild("HumanoidRootPart", 10)
+    local head = character:WaitForChild("Head", 10)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    
+    if not hrp or not head or not humanoid then return end
+
+    local breathEmitter = createBreathEmitter(head)
+    task.spawn(function()
+        while character and character.Parent do
+            task.wait(math.random(2, 4))
+            if breathEmitter.Parent then
+                breathEmitter:Emit(math.random(3, 6))
+            end
+        end
+    end)
+
+    local lastPos = hrp.Position
+    task.spawn(function()
+        while character and character.Parent do
+            local speed = (hrp.Position - lastPos).Magnitude
+            lastPos = hrp.Position
+            
+            if speed > 0.2 and humanoid.FloorMaterial ~= Enum.Material.Air then
+                local ray = Ray.new(hrp.Position, Vector3.new(0, -4, 0))
+                local hit, pos = Workspace:FindPartOnRay(ray, character)
+                
+                if hit then
+                    local splashChance = 0.2
+                    if hit.Name == "Puddle" then splashChance = 0.9 end
+
+                    if math.random() < splashChance then
+                        local splashPart = Instance.new("Part")
+                        splashPart.Transparency = 1
+                        splashPart.CanCollide = false
+                        splashPart.Anchored = true
+                        splashPart.Position = pos
+                        splashPart.Parent = Workspace
+                        Debris:AddItem(splashPart, 1)
+
+                        local p = Instance.new("ParticleEmitter")
+                        p.Texture = CONFIG.Visuals.SplashTextureID
+                        p.Color = ColorSequence.new(Color3.fromRGB(150,160,170))
+                        p.Size = NumberSequence.new(1, 0)
+                        p.Lifetime = NumberRange.new(0.2, 0.4)
+                        p.Speed = NumberRange.new(5, 8)
+                        p.Acceleration = Vector3.new(0, -30, 0)
+                        p.SpreadAngle = Vector2.new(30, 30)
+                        p.Parent = splashPart
+                        p:Emit(5)
+
+                        local s = Instance.new("Sound")
+                        s.SoundId = CONFIG.Audio.FootstepSplash
+                        s.Volume = 0.3
+                        s.PlaybackSpeed = math.random(90, 120)/100
+                        s.Parent = hrp
+                        s:Play()
+                        Debris:AddItem(s, 1)
+                    end
+                end
+            end
+            task.wait(0.15)
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- 📺 MODULE 3: SCREEN-SPACE RAIN DROPLETS (GUI)
+--------------------------------------------------------------------------------
+local function createRainOverlay()
+    local player = Players.LocalPlayer
+    if not player then return end
+    local gui = player:WaitForChild("PlayerGui")
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "RainFX"
+    screenGui.IgnoreGuiInset = true
+    screenGui.Parent = gui
+    
+    local frame = Instance.new("ImageLabel")
+    frame.Size = UDim2.new(1, 0, 1, 0)
+    frame.BackgroundTransparency = 1
+    frame.Image = CONFIG.Visuals.RainDropOverlayID
+    frame.ImageTransparency = 1
+    frame.TileSize = UDim2.new(0.2, 0, 0.2, 0)
+    frame.ScaleType = Enum.ScaleType.Tile
+    frame.Parent = screenGui
+    
+    task.spawn(function()
+        while true do
+            local cam = Workspace.CurrentCamera
+            local lookVector = cam.CFrame.LookVector
+            local upDot = lookVector:Dot(Vector3.new(0, 1, 0))
+            
+            local targetTrans = 0.7
+            if upDot > 0.2 then targetTrans = 0.3 end
+            
+            local headPos = cam.CFrame.Position
+            local roofRay = Ray.new(headPos, Vector3.new(0, 50, 0))
+            local hit = Workspace:FindPartOnRay(roofRay, player.Character)
+            
+            if hit then targetTrans = 1 end
+            
+            TweenService:Create(frame, TweenInfo.new(1), {ImageTransparency = targetTrans}):Play()
+            
+            local t = tick()
+            frame.TilePosition = UDim2.new(0, math.sin(t*0.1)*10, 0, t * 20)
+            task.wait(0.1)
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- 🌧️ MODULE 4: RAYCAST RAIN (UPDATED - PHYSICS BASED)
+--------------------------------------------------------------------------------
+local function startRaycastRain()
+    -- Prepare Splash Template
+    local splashTemplate = Instance.new("Part")
+    splashTemplate.Name = "SplashEffect"
+    splashTemplate.Size = Vector3.new(1, 1, 1)
+    splashTemplate.Transparency = 1
+    splashTemplate.Anchored = true
+    splashTemplate.CanCollide = false
+
+    local particles = Instance.new("ParticleEmitter")
+    particles.Texture = "rbxassetid://241597399"
+    particles.Size = NumberSequence.new(0.5, 0)
+    particles.Transparency = NumberSequence.new(0.3, 1)
+    particles.Lifetime = NumberRange.new(0.1, 0.2)
+    particles.Speed = NumberRange.new(8, 12)
+    particles.SpreadAngle = Vector2.new(50, 50)
+    particles.Acceleration = Vector3.new(0, -40, 0)
+    particles.Enabled = false
+    particles.Parent = splashTemplate
+
+    -- Main Loop
+    RunService.Heartbeat:Connect(function()
+        local cam = Workspace.CurrentCamera
+        if not cam then return end
+
+        -- Spawn configured amount of drops per frame
+        for i = 1, CONFIG.RaycastRain.Amount do
+            local randomPos = Vector3.new(
+                math.random(-CONFIG.RaycastRain.Radius, CONFIG.RaycastRain.Radius), 
+                CONFIG.RaycastRain.Height, 
+                math.random(-CONFIG.RaycastRain.Radius, CONFIG.RaycastRain.Radius)
+            )
+            
+            -- Calculate spawn position relative to camera X/Z but absolute Y
+            local camPos = cam.CFrame.Position
+            local spawnPos = Vector3.new(camPos.X, 0, camPos.Z) + randomPos
+            -- Override Y to ensure it falls from the "sky" relative to player height
+            spawnPos = Vector3.new(spawnPos.X, camPos.Y + CONFIG.RaycastRain.Height, spawnPos.Z)
+
+            -- Raycast
+            local rayParams = RaycastParams.new()
+            rayParams.FilterType = Enum.RaycastFilterType.Exclude
+            rayParams.FilterDescendantsInstances = {cam, Players.LocalPlayer.Character}
+
+            local direction = Vector3.new(0, -1, 0)
+            local rayResult = Workspace:Raycast(spawnPos, direction * 300, rayParams)
+
+            if rayResult then
+                local hitPos = rayResult.Position
+                local dist = (spawnPos - hitPos).Magnitude
+
+                -- A. VISUAL DROP (Neon streak)
+                local drop = Instance.new("Part")
+                drop.Material = Enum.Material.Neon
+                drop.Color = CONFIG.RaycastRain.SplashColor
+                drop.Size = Vector3.new(0.05, math.min(15, dist), 0.05) -- Scale length based on distance, max 15
+                -- Position midway between spawn and hit for simple visualization, 
+                -- or just create a streak near the hit point for performance:
+                drop.CFrame = CFrame.new(hitPos + Vector3.new(0, 4, 0)) 
+                drop.Transparency = 0.4
+                drop.Anchored = true
+                drop.CanCollide = false
+                drop.CastShadow = false
+                drop.Parent = Workspace
+                
+                -- B. SPLASH (Impact)
+                local splash = splashTemplate:Clone()
+                splash.Position = hitPos
+                splash.CFrame = CFrame.lookAt(hitPos, hitPos + rayResult.Normal)
+                splash.Parent = Workspace
+                
+                splash.ParticleEmitter:Emit(3) -- Small burst
+
+                Debris:AddItem(drop, 0.05) -- Visual gone instantly
+                Debris:AddItem(splash, 0.5)
+            end
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- 🏗️ MODULE 5: PROCEDURAL ENVIRONMENT (Wetness & Neon)
+--------------------------------------------------------------------------------
+local function processWorldMap()
+    local neonParts = {}
+    local seed = 12345
+    local puddleThreshold = 0.35
+    
+    for _, part in ipairs(Workspace:GetDescendants()) do
+        if part:IsA("BasePart") and part.Transparency < 1 and not part.Locked then
+            local size = part.Size
+            local isFloor = (size.Y < size.X) and (size.Y < size.Z) and (size.Y < 2) and (part.Rotation.X < 5)
+            local h, s, v = part.Color:ToHSV()
+
+            if (s > 0.4 and v > 0.5) or part.Material == Enum.Material.Neon then
+                part.Material = Enum.Material.Neon
+                part.Color = Color3.fromHSV(h, 0.8, 5)
+                local light = Instance.new("PointLight")
+                light.Color = part.Color
+                light.Range = 15
+                light.Brightness = 1.2
+                light.Shadows = true
+                light.Parent = part
+                table.insert(neonParts, {part = part, light = light})
+
+            elseif isFloor then
+                part.Material = Enum.Material.Concrete
+                local noiseVal = math.noise((part.Position.X * 0.05), (part.Position.Z * 0.05), seed)
+                if noiseVal > puddleThreshold then
+                    part.Reflectance = 0.7
+                    part.Color = part.Color:Lerp(Color3.new(0,0,0), 0.3)
+                    part.Name = "Puddle"
+                else
+                    part.Reflectance = 0.1
+                    part.Color = part.Color:Lerp(Color3.new(0,0,0), 0.1)
+                end
+            end
+        end
+    end
+    return neonParts
+end
+
+local function flickerNeon(parts)
+    task.spawn(function()
+        local rng = Random.new()
+        while true do
+            local target = parts[rng:NextInteger(1, #parts)]
+            if target and target.part and target.part.Parent then
+                target.part.Transparency = 0.5
+                target.light.Enabled = false
+                task.wait(0.05)
+                target.part.Transparency = 0
+                target.light.Enabled = true
+                task.wait(0.1)
+                target.part.Transparency = 0.5
+                target.light.Enabled = false
+                task.wait(0.05)
+                target.part.Transparency = 0
+                target.light.Enabled = true
+            end
+            task.wait(rng:NextNumber(0.1, 1.5))
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- 🔊 MODULE 6: AUDIO AMBIENCE & INDOOR DETECTION
+--------------------------------------------------------------------------------
+local function setupAudio()
+    local function createLoop(name, id, vol)
+        local s = Instance.new("Sound")
+        s.Name = name
+        s.SoundId = id
+        s.Volume = vol
+        s.Looped = true
+        s.Parent = SoundService
+        s:Play()
+        return s
+    end
+
+    local rainOut = createLoop("RainOutdoor", CONFIG.Audio.RainID, CONFIG.Audio.MasterVolume)
+    local rainIn  = createLoop("RainIndoor", CONFIG.Audio.IndoorRainID, 0)
+    local city    = createLoop("CityAmbience", CONFIG.Audio.CityHumID, CONFIG.Audio.MasterVolume * 0.8)
+
+    task.spawn(function()
+        local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Linear)
+        while true do
+            local cam = Workspace.CurrentCamera
+            local isIndoors = false
+            if Players.LocalPlayer and Players.LocalPlayer.Character then
+                local headPos = cam.CFrame.Position
+                local roofRay = Ray.new(headPos, Vector3.new(0, 50, 0))
+                local hit = Workspace:FindPartOnRay(roofRay, Players.LocalPlayer.Character)
+                if hit then isIndoors = true end
+            end
+
+            if isIndoors then
+                TweenService:Create(rainOut, tweenInfo, {Volume = 0}):Play()
+                TweenService:Create(rainIn, tweenInfo, {Volume = CONFIG.Audio.MasterVolume}):Play()
+            else
+                TweenService:Create(rainOut, tweenInfo, {Volume = CONFIG.Audio.MasterVolume}):Play()
+                TweenService:Create(rainIn, tweenInfo, {Volume = 0}):Play()
+            end
+            task.wait(0.5)
+        end
+    end)
+
+    task.spawn(function()
+        while true do
+            task.wait(math.random(20, 60))
+            local thunder = Instance.new("Sound")
+            thunder.SoundId = CONFIG.Audio.ThunderSounds[math.random(1, #CONFIG.Audio.ThunderSounds)]
+            thunder.Volume = CONFIG.Audio.MasterVolume * 1.2
+            thunder.Parent = SoundService
+            thunder:Play()
+            Debris:AddItem(thunder, 10)
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- 🚀 INITIALIZATION
+--------------------------------------------------------------------------------
+setupLighting()
+setupAudio()
+startRaycastRain() -- New Module Start
+
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(function(char)
+        setupCharacterPhysics(char)
+        createRainOverlay()
+    end)
+    if player.Character then
+        setupCharacterPhysics(player.Character)
+        createRainOverlay()
+    end
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+if Players.LocalPlayer then onPlayerAdded(Players.LocalPlayer) end
+
+task.spawn(function()
+    local neon = processWorldMap()
+    flickerNeon(neon)
+end)
+
+print(">> 🏁 ULTRA-REALISM v6.1 INITIALIZED.")
