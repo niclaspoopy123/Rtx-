@@ -376,10 +376,6 @@ local function startRaycastRain()
                 drop.CanCollide = false
                 drop.CastShadow = false
                 drop.Parent = Workspace
-                drop.Anchored = true
-                drop.CanCollide = false
-                drop.CastShadow = false
-                drop.Parent = Workspace
                 
                 -- B. SPLASH (Impact with better particles)
                 local splash = splashTemplate:Clone()
