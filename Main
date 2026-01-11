@@ -61,10 +61,11 @@ local CONFIG = {
     },
     -- NEW SETTINGS FOR RAYCAST RAIN
     RaycastRain = {
-        Amount = 10,    -- Drops per frame (Lower if lagging)
+        Amount = 20,    -- Drops per frame (increased for denser rain)
         Height = 80,    -- Height above camera to spawn
         Radius = 60,    -- Radius around camera
-        SplashColor = Color3.fromRGB(200, 225, 255)
+        SplashColor = Color3.fromRGB(100, 200, 255), -- More vibrant blue
+        WindDrift = Vector3.new(2, 0, 1) -- Wind effect for realism
     }
 }
 
@@ -279,6 +280,15 @@ local function createRainOverlay()
             
             if hit then targetTrans = 1 end
             
+            -- Check if player is walking - hide overlay when moving
+            local character = player.Character
+            if character and character:FindFirstChild("Humanoid") then
+                local humanoid = character.Humanoid
+                if humanoid.MoveSpeed > 0 and (humanoid.MoveVector.Magnitude > 0.1) then
+                    targetTrans = 1 -- Fully transparent when walking
+                end
+            end
+            
             TweenService:Create(frame, TweenInfo.new(1), {ImageTransparency = targetTrans}):Play()
             
             local t = tick()
@@ -302,12 +312,13 @@ local function startRaycastRain()
 
     local particles = Instance.new("ParticleEmitter")
     particles.Texture = "rbxassetid://241597399"
-    particles.Size = NumberSequence.new(0.5, 0)
-    particles.Transparency = NumberSequence.new(0.3, 1)
-    particles.Lifetime = NumberRange.new(0.1, 0.2)
-    particles.Speed = NumberRange.new(8, 12)
-    particles.SpreadAngle = Vector2.new(50, 50)
+    particles.Size = NumberSequence.new(0.8, 0)
+    particles.Transparency = NumberSequence.new(0.2, 1)
+    particles.Lifetime = NumberRange.new(0.15, 0.3)
+    particles.Speed = NumberRange.new(10, 15)
+    particles.SpreadAngle = Vector2.new(60, 60)
     particles.Acceleration = Vector3.new(0, -40, 0)
+    particles.Color = ColorSequence.new(Color3.fromRGB(100, 200, 255))
     particles.Enabled = false
     particles.Parent = splashTemplate
 
@@ -330,42 +341,50 @@ local function startRaycastRain()
             -- Override Y to ensure it falls from the "sky" relative to player height
             spawnPos = Vector3.new(spawnPos.X, camPos.Y + CONFIG.RaycastRain.Height, spawnPos.Z)
 
-            -- Raycast
+            -- Raycast with wind drift
             local rayParams = RaycastParams.new()
             rayParams.FilterType = Enum.RaycastFilterType.Exclude
             rayParams.FilterDescendantsInstances = {cam, Players.LocalPlayer.Character}
 
-            local direction = Vector3.new(0, -1, 0)
-            local rayResult = Workspace:Raycast(spawnPos, direction * 300, rayParams)
+            local direction = Vector3.new(0, -1, 0) + CONFIG.RaycastRain.WindDrift * 0.01
+            local rayResult = Workspace:Raycast(spawnPos, direction.Unit * 300, rayParams)
 
             if rayResult then
                 local hitPos = rayResult.Position
                 local dist = (spawnPos - hitPos).Magnitude
 
-                -- A. VISUAL DROP (Neon streak)
+                -- A. VISUAL DROP (Neon streak with vibrant colors)
                 local drop = Instance.new("Part")
                 drop.Material = Enum.Material.Neon
-                drop.Color = CONFIG.RaycastRain.SplashColor
-                drop.Size = Vector3.new(0.05, math.min(15, dist), 0.05) -- Scale length based on distance, max 15
-                -- Position midway between spawn and hit for simple visualization, 
-                -- or just create a streak near the hit point for performance:
-                drop.CFrame = CFrame.new(hitPos + Vector3.new(0, 4, 0)) 
-                drop.Transparency = 0.4
+                -- Vary colors for more visual interest
+                local colorVariation = math.random(1, 3)
+                if colorVariation == 1 then
+                    drop.Color = Color3.fromRGB(100, 200, 255) -- Cyan blue
+                elseif colorVariation == 2 then
+                    drop.Color = Color3.fromRGB(80, 180, 255) -- Light blue
+                else
+                    drop.Color = Color3.fromRGB(150, 220, 255) -- Sky blue
+                end
+                drop.Size = Vector3.new(0.08, math.min(20, dist * 0.8), 0.08) -- Longer, more visible streaks
+                -- Position the drop to show falling effect
+                local midPoint = spawnPos:Lerp(hitPos, 0.5)
+                drop.CFrame = CFrame.new(midPoint, hitPos) 
+                drop.Transparency = 0.3
                 drop.Anchored = true
                 drop.CanCollide = false
                 drop.CastShadow = false
                 drop.Parent = Workspace
                 
-                -- B. SPLASH (Impact)
+                -- B. SPLASH (Impact with better particles)
                 local splash = splashTemplate:Clone()
                 splash.Position = hitPos
                 splash.CFrame = CFrame.lookAt(hitPos, hitPos + rayResult.Normal)
                 splash.Parent = Workspace
                 
-                splash.ParticleEmitter:Emit(3) -- Small burst
+                splash.ParticleEmitter:Emit(5) -- More particles for better splash
 
-                Debris:AddItem(drop, 0.05) -- Visual gone instantly
-                Debris:AddItem(splash, 0.5)
+                Debris:AddItem(drop, 0.08) -- Quick removal for performance
+                Debris:AddItem(splash, 0.6)
             end
         end
     end)
@@ -387,11 +406,12 @@ local function processWorldMap()
 
             if (s > 0.4 and v > 0.5) or part.Material == Enum.Material.Neon then
                 part.Material = Enum.Material.Neon
-                part.Color = Color3.fromHSV(h, 0.8, 5)
+                -- Enhanced neon colors with more vibrancy
+                part.Color = Color3.fromHSV(h, 1, 8) -- Max saturation and higher brightness
                 local light = Instance.new("PointLight")
                 light.Color = part.Color
-                light.Range = 15
-                light.Brightness = 1.2
+                light.Range = 20 -- Increased range
+                light.Brightness = 2 -- Doubled brightness
                 light.Shadows = true
                 light.Parent = part
                 table.insert(neonParts, {part = part, light = light})
