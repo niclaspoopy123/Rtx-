@@ -34,9 +34,9 @@ local CONFIG = {
         TimeOfDay = 0,
     },
     Lighting = {
-        DiffuseScale = 0.15, -- Darker for contrast
-        SpecularScale = 2.5, -- Higher for wet look
-        AmbientBase = Color3.fromRGB(2, 2, 5),
+        DiffuseScale = 0.25, -- Brighter for better visibility
+        SpecularScale = 3.5, -- Higher for wet look and shine
+        AmbientBase = Color3.fromRGB(8, 8, 12),
     },
     Camera = {
         EnableDoF = true,
@@ -61,10 +61,10 @@ local CONFIG = {
     },
     -- NEW SETTINGS FOR RAYCAST RAIN
     RaycastRain = {
-        Amount = 20,    -- Drops per frame (increased for denser rain)
+        Amount = 35,    -- Drops per frame (increased for denser, more visible rain)
         Height = 80,    -- Height above camera to spawn
         Radius = 60,    -- Radius around camera
-        SplashColor = Color3.fromRGB(100, 200, 255), -- More vibrant blue
+        SplashColor = Color3.fromRGB(120, 220, 255), -- More vibrant blue
         WindDrift = Vector3.new(2, 0, 1) -- Wind effect for realism
     }
 }
@@ -79,7 +79,7 @@ local function setupLighting()
     Lighting.EnvironmentDiffuseScale = CONFIG.Lighting.DiffuseScale
     Lighting.EnvironmentSpecularScale = CONFIG.Lighting.SpecularScale
     Lighting.Ambient = CONFIG.Lighting.AmbientBase
-    Lighting.OutdoorAmbient = Color3.fromRGB(5, 5, 15)
+    Lighting.OutdoorAmbient = Color3.fromRGB(10, 10, 20)
     Lighting.GlobalShadows = CONFIG.Core.GlobalShadows
     Lighting.ClockTime = CONFIG.Core.TimeOfDay
 
@@ -103,17 +103,17 @@ local function setupLighting()
 
     -- 2. High Contrast Color Correction
     local cc = Instance.new("ColorCorrectionEffect")
-    cc.TintColor = Color3.fromRGB(230, 240, 255)
-    cc.Brightness = 0.05
-    cc.Contrast = 0.3
-    cc.Saturation = -0.2
+    cc.TintColor = Color3.fromRGB(235, 245, 255)
+    cc.Brightness = 0.15
+    cc.Contrast = 0.25
+    cc.Saturation = -0.1
     cc.Parent = Lighting
 
     -- 3. Bloom (Neon Glow)
     local bloom = Instance.new("BloomEffect")
-    bloom.Intensity = 0.8
-    bloom.Threshold = 0.8
-    bloom.Size = 42
+    bloom.Intensity = 1.2
+    bloom.Threshold = 0.7
+    bloom.Size = 48
     bloom.Parent = Lighting
 
     -- 4. Chromatic Aberration
@@ -361,17 +361,21 @@ local function startRaycastRain()
                 -- Vary colors for more visual interest
                 local colorVariation = math.random(1, 3)
                 if colorVariation == 1 then
-                    drop.Color = Color3.fromRGB(100, 200, 255) -- Cyan blue
+                    drop.Color = Color3.fromRGB(120, 220, 255) -- Brighter cyan blue
                 elseif colorVariation == 2 then
-                    drop.Color = Color3.fromRGB(80, 180, 255) -- Light blue
+                    drop.Color = Color3.fromRGB(100, 200, 255) -- Bright light blue
                 else
-                    drop.Color = Color3.fromRGB(150, 220, 255) -- Sky blue
+                    drop.Color = Color3.fromRGB(160, 230, 255) -- Bright sky blue
                 end
-                drop.Size = Vector3.new(0.08, math.min(20, dist * 0.8), 0.08) -- Longer, more visible streaks
+                drop.Size = Vector3.new(0.12, math.min(25, dist * 0.9), 0.12) -- Thicker, longer, more visible streaks
                 -- Position the drop to show falling effect
                 local midPoint = spawnPos:Lerp(hitPos, 0.5)
                 drop.CFrame = CFrame.new(midPoint, hitPos) 
-                drop.Transparency = 0.3
+                drop.Transparency = 0.2
+                drop.Anchored = true
+                drop.CanCollide = false
+                drop.CastShadow = false
+                drop.Parent = Workspace
                 drop.Anchored = true
                 drop.CanCollide = false
                 drop.CastShadow = false
@@ -383,10 +387,10 @@ local function startRaycastRain()
                 splash.CFrame = CFrame.lookAt(hitPos, hitPos + rayResult.Normal)
                 splash.Parent = Workspace
                 
-                splash.ParticleEmitter:Emit(5) -- More particles for better splash
+                splash.ParticleEmitter:Emit(8) -- More particles for better splash
 
-                Debris:AddItem(drop, 0.08) -- Quick removal for performance
-                Debris:AddItem(splash, 0.6)
+                Debris:AddItem(drop, 0.1) -- Quick removal for performance
+                Debris:AddItem(splash, 0.8)
             end
         end
     end)
@@ -409,11 +413,11 @@ local function processWorldMap()
             if (s > 0.4 and v > 0.5) or part.Material == Enum.Material.Neon then
                 part.Material = Enum.Material.Neon
                 -- Enhanced neon colors with more vibrancy
-                part.Color = Color3.fromHSV(h, 1, 8) -- Max saturation and higher brightness
+                part.Color = Color3.fromHSV(h, 1, 10) -- Max saturation and higher brightness
                 local light = Instance.new("PointLight")
                 light.Color = part.Color
-                light.Range = 20 -- Increased range
-                light.Brightness = 2 -- Doubled brightness
+                light.Range = 25 -- Increased range for more shine
+                light.Brightness = 3 -- Tripled brightness for intense shine
                 light.Shadows = true
                 light.Parent = part
                 table.insert(neonParts, {part = part, light = light})
@@ -422,12 +426,12 @@ local function processWorldMap()
                 part.Material = Enum.Material.Concrete
                 local noiseVal = math.noise((part.Position.X * 0.05), (part.Position.Z * 0.05), seed)
                 if noiseVal > puddleThreshold then
-                    part.Reflectance = 0.7
-                    part.Color = part.Color:Lerp(Color3.new(0,0,0), 0.3)
+                    part.Reflectance = 0.85
+                    part.Color = part.Color:Lerp(Color3.new(0,0,0), 0.35)
                     part.Name = "Puddle"
                 else
-                    part.Reflectance = 0.1
-                    part.Color = part.Color:Lerp(Color3.new(0,0,0), 0.1)
+                    part.Reflectance = 0.25
+                    part.Color = part.Color:Lerp(Color3.new(0,0,0), 0.15)
                 end
             end
         end
@@ -475,10 +479,10 @@ local function setupAudio()
 
     local rainOut = createLoop("RainOutdoor", CONFIG.Audio.RainID, CONFIG.Audio.MasterVolume)
     local rainIn  = createLoop("RainIndoor", CONFIG.Audio.IndoorRainID, 0)
-    local city    = createLoop("CityAmbience", CONFIG.Audio.CityHumID, CONFIG.Audio.MasterVolume * 0.8)
+    local city    = createLoop("CityAmbience", CONFIG.Audio.CityHumID, CONFIG.Audio.MasterVolume * 0.7)
 
     task.spawn(function()
-        local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Linear)
+        local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine)
         while true do
             local cam = Workspace.CurrentCamera
             local isIndoors = false
@@ -490,8 +494,8 @@ local function setupAudio()
             end
 
             if isIndoors then
-                TweenService:Create(rainOut, tweenInfo, {Volume = 0}):Play()
-                TweenService:Create(rainIn, tweenInfo, {Volume = CONFIG.Audio.MasterVolume}):Play()
+                TweenService:Create(rainOut, tweenInfo, {Volume = CONFIG.Audio.MasterVolume * 0.2}):Play()
+                TweenService:Create(rainIn, tweenInfo, {Volume = CONFIG.Audio.MasterVolume * 0.8}):Play()
             else
                 TweenService:Create(rainOut, tweenInfo, {Volume = CONFIG.Audio.MasterVolume}):Play()
                 TweenService:Create(rainIn, tweenInfo, {Volume = 0}):Play()
